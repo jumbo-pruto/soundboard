@@ -26,6 +26,11 @@ function CanvasText({
   )
   const [editing, setEditing] = useState(false)
 
+  const vAlignClass =
+    box.valign === 'top' ? 'items-start' : box.valign === 'bottom' ? 'items-end' : 'items-center'
+  const textAlignClass =
+    box.align === 'center' ? 'text-center' : box.align === 'right' ? 'text-right' : 'text-left'
+
   return (
     <Rnd
       size={{ width: box.w, height: box.h }}
@@ -46,7 +51,7 @@ function CanvasText({
       style={{ zIndex: 1 }}
     >
       <div
-        className={`flex h-full w-full items-center rounded-md px-2 ${
+        className={`flex h-full w-full ${vAlignClass} rounded-md px-2 ${
           editMode ? 'outline-dashed outline-1 outline-line' : ''
         } ${selected && editMode ? '!outline-solid !outline-2 !outline-fg' : ''}`}
         style={{ background: box.bg, color: box.color, fontSize: box.fontSize }}
@@ -69,7 +74,9 @@ function CanvasText({
             }}
           />
         ) : (
-          <span className="w-full whitespace-pre-wrap break-words font-semibold leading-tight">
+          <span
+            className={`w-full whitespace-pre-wrap break-words font-semibold leading-tight ${textAlignClass}`}
+          >
             {box.text}
           </span>
         )}
@@ -150,6 +157,7 @@ export default function CanvasView({ tab }: { tab: TabData }): JSX.Element {
                 item={item}
                 variant="card"
                 hotkeyLabel={item.state.hotkey}
+                fontSize={item.state.canvasFontSize ?? undefined}
               />
             </Rnd>
           )

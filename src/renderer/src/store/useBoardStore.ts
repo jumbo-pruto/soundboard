@@ -3,8 +3,11 @@ import { nanoid } from 'nanoid'
 import {
   Board,
   ButtonState,
+  CanvasLayout,
   CanvasRect,
+  DEFAULT_TEXTBOX_ALIGN,
   EMPTY_BOARD,
+  LayoutButton,
   ScannedFile,
   TextBoxState
 } from '@shared/types'
@@ -42,7 +45,52 @@ function defaultButton(index: number): ButtonState {
     hidden: false,
     volume: 1,
     rate: 1,
-    canvas: defaultCanvasRect(index)
+    canvas: defaultCanvasRect(index),
+    canvasFontSize: null,
+    retrigger: 'default'
+  }
+}
+
+// ---------- saved-layout helpers ----------
+
+function layoutButtonsFromLive(board: Board): Record<string, LayoutButton> {
+  const out: Record<string, LayoutButton> = {}
+  for (const [key, b] of Object.entries(board.buttons)) {
+    out[key] = { x: b.canvas.x, y: b.canvas.y, w: b.canvas.w, h: b.canvas.h, fontSize: b.canvasFontSize }
+  }
+  return out
+}
+
+function snapshotLayout(board: Board, id: string, name: string): CanvasLayout {
+  return { id, name, buttons: layoutButtonsFromLive(board), textBoxes: board.textBoxes.map((t) => ({ ...t })) }
+}
+
+/** Board with the active layout entry updated to match the current live canvas. */
+function syncActiveLayout(board: Board): Board {
+  if (!board.activeLayoutId) return board
+  const idx = board.layouts.findIndex((l) => l.id === board.activeLayoutId)
+  if (idx < 0) return board
+  const layouts = [...board.layouts]
+  layouts[idx] = {
+    ...layouts[idx],
+    buttons: layoutButtonsFromLive(board),
+    textBoxes: board.textBoxes.map((t) => ({ ...t }))
+  }
+  return { ...board, layouts }
+}
+
+/** Board with the live canvas set from a layout (keys missing from the layout keep their current geometry). */
+function applyLayoutToLive(board: Board, layout: CanvasLayout): Board {
+  const buttons = { ...board.buttons }
+  for (const [key, b] of Object.entries(buttons)) {
+    const lb = layout.buttons[key]
+    if (lb) buttons[key] = { ...b, canvas: { x: lb.x, y: lb.y, w: lb.w, h: lb.h }, canvasFontSize: lb.fontSize }
+  }
+  return {
+    ...board,
+    buttons,
+    textBoxes: layout.textBoxes.map((t) => ({ ...DEFAULT_TEXTBOX_ALIGN, ...t })),
+    activeLayoutId: layout.id
   }
 }
 
@@ -52,11 +100,14 @@ function reconcile(files: ScannedFile[], saved: Board | null): { board: Board; c
     ? {
         ...EMPTY_BOARD,
         ...saved,
+        version: 2,
         tab: { ...EMPTY_BOARD.tab, ...(saved.tab ?? {}) },
         buttons: { ...(saved.buttons ?? {}) },
-        textBoxes: [...(saved.textBoxes ?? [])]
+        textBoxes: [...(saved.textBoxes ?? [])],
+        layouts: [...(saved.layouts ?? [])],
+        activeLayoutId: saved.activeLayoutId ?? null
       }
-    : { ...EMPTY_BOARD, tab: { ...EMPTY_BOARD.tab }, buttons: {}, textBoxes: [] }
+    : { ...EMPTY_BOARD, tab: { ...EMPTY_BOARD.tab }, buttons: {}, textBoxes: [], layouts: [], activeLayoutId: null }
 
   let changed = !saved
   let known = Object.keys(board.buttons).length
@@ -79,6 +130,25 @@ function reconcile(files: ScannedFile[], saved: Board | null): { board: Board; c
       }
     }
   }
+
+  // v1 -> v2: text boxes gain align/valign
+  const normBoxes = board.textBoxes.map((t) => ({ ...DEFAULT_TEXTBOX_ALIGN, ...t }))
+  if (normBoxes.some((t, i) => Object.keys(t).length !== Object.keys(board.textBoxes[i]).length)) {
+    board.textBoxes = normBoxes
+    changed = true
+  }
+
+  // ensure a selectable "Default" layout always exists
+  if (board.layouts.length === 0) {
+    const layout = snapshotLayout(board, nanoid(8), 'Default')
+    board.layouts = [layout]
+    board.activeLayoutId = layout.id
+    changed = true
+  } else if (!board.activeLayoutId || !board.layouts.some((l) => l.id === board.activeLayoutId)) {
+    board.activeLayoutId = board.layouts[0].id
+    changed = true
+  }
+
   return { board, changed }
 }
 
@@ -90,6 +160,7 @@ interface BoardState {
   removeTab: (folder: string) => void
 
   patchButton: (folder: string, key: string, patch: Partial<ButtonState>) => void
+  patchButtons: (folder: string, keys: string[], patch: Partial<ButtonState>) => void
   patchTab: (folder: string, patch: Partial<Board['tab']>) => void
   setOrder: (folder: string, orderedKeys: string[]) => void
   autoArrangeCanvas: (folder: string) => void
@@ -97,6 +168,12 @@ interface BoardState {
   addTextBox: (folder: string, partial?: Partial<TextBoxState>) => string
   patchTextBox: (folder: string, id: string, patch: Partial<TextBoxState>) => void
   removeTextBox: (folder: string, id: string) => void
+
+  // saved canvas layouts
+  applyLayout: (folder: string, id: string) => void
+  createLayout: (folder: string, name: string) => string
+  renameLayout: (folder: string, id: string, name: string) => void
+  deleteLayout: (folder: string, id: string) => void
 
   flushAll: () => Promise<void>
 }
@@ -127,10 +204,13 @@ export const useBoardStore = create<BoardState>((set, get) => {
     )
   }
 
-  const updateBoard = (folder: string, fn: (b: Board) => Board): void => {
+  const updateBoard = (folder: string, fn: (b: Board) => Board, sync = false): void => {
     const tab = get().tabs[folder]
     if (!tab) return
-    set({ tabs: { ...get().tabs, [folder]: { ...tab, board: fn(tab.board) } } })
+    let board = fn(tab.board)
+    // mirror live canvas edits into the currently selected layout
+    if (sync) board = syncActiveLayout(board)
+    set({ tabs: { ...get().tabs, [folder]: { ...tab, board } } })
     scheduleSave(folder)
   }
 
@@ -207,8 +287,22 @@ export const useBoardStore = create<BoardState>((set, get) => {
     },
 
     patchButton: (folder, key, patch) =>
-      updateBoard(folder, (b) =>
-        b.buttons[key] ? { ...b, buttons: { ...b.buttons, [key]: { ...b.buttons[key], ...patch } } } : b
+      updateBoard(
+        folder,
+        (b) =>
+          b.buttons[key] ? { ...b, buttons: { ...b.buttons, [key]: { ...b.buttons[key], ...patch } } } : b,
+        'canvas' in patch || 'canvasFontSize' in patch
+      ),
+
+    patchButtons: (folder, keys, patch) =>
+      updateBoard(
+        folder,
+        (b) => {
+          const buttons = { ...b.buttons }
+          for (const key of keys) if (buttons[key]) buttons[key] = { ...buttons[key], ...patch }
+          return { ...b, buttons }
+        },
+        'canvas' in patch || 'canvasFontSize' in patch
       ),
 
     patchTab: (folder, patch) => updateBoard(folder, (b) => ({ ...b, tab: { ...b.tab, ...patch } })),
@@ -234,7 +328,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
           if (buttons[key]) buttons[key] = { ...buttons[key], canvas: defaultCanvasRect(i) }
         })
         return { ...b, buttons }
-      })
+      }, true)
     },
 
     addTextBox: (folder, partial) => {
@@ -256,20 +350,52 @@ export const useBoardStore = create<BoardState>((set, get) => {
         fontSize: 18,
         color: '#ffffff',
         bg: 'transparent',
+        ...DEFAULT_TEXTBOX_ALIGN,
         ...partial
       }
-      updateBoard(folder, (b) => ({ ...b, textBoxes: [...b.textBoxes, box] }))
+      updateBoard(folder, (b) => ({ ...b, textBoxes: [...b.textBoxes, box] }), true)
       return id
     },
 
     patchTextBox: (folder, id, patch) =>
-      updateBoard(folder, (b) => ({
-        ...b,
-        textBoxes: b.textBoxes.map((t) => (t.id === id ? { ...t, ...patch } : t))
-      })),
+      updateBoard(
+        folder,
+        (b) => ({ ...b, textBoxes: b.textBoxes.map((t) => (t.id === id ? { ...t, ...patch } : t)) }),
+        true
+      ),
 
     removeTextBox: (folder, id) =>
-      updateBoard(folder, (b) => ({ ...b, textBoxes: b.textBoxes.filter((t) => t.id !== id) })),
+      updateBoard(folder, (b) => ({ ...b, textBoxes: b.textBoxes.filter((t) => t.id !== id) }), true),
+
+    applyLayout: (folder, id) =>
+      updateBoard(folder, (b) => {
+        const layout = b.layouts.find((l) => l.id === id)
+        return layout ? applyLayoutToLive(b, layout) : b
+      }),
+
+    createLayout: (folder, name) => {
+      const id = nanoid(8)
+      updateBoard(folder, (b) => ({
+        ...b,
+        layouts: [...b.layouts, snapshotLayout(b, id, name)],
+        activeLayoutId: id
+      }))
+      return id
+    },
+
+    renameLayout: (folder, id, name) =>
+      updateBoard(folder, (b) => ({
+        ...b,
+        layouts: b.layouts.map((l) => (l.id === id ? { ...l, name } : l))
+      })),
+
+    deleteLayout: (folder, id) =>
+      updateBoard(folder, (b) => {
+        if (b.layouts.length <= 1) return b
+        const remaining = b.layouts.filter((l) => l.id !== id)
+        if (b.activeLayoutId !== id) return { ...b, layouts: remaining }
+        return applyLayoutToLive({ ...b, layouts: remaining }, remaining[0])
+      }),
 
     flushAll: async () => {
       const pending = [...saveTimers.keys()]

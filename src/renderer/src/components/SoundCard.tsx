@@ -15,11 +15,13 @@ interface Props extends Omit<HTMLAttributes<HTMLDivElement>, 'onClick'> {
   variant: 'card' | 'row'
   /** key badge to show (custom hotkey or launchpad position) */
   hotkeyLabel?: string | null
+  /** overrides the label font size (canvas view uses the per-button canvasFontSize) */
+  fontSize?: number
 }
 
 /** The single button used by Grid / List / Launchpad / Canvas views. */
 const SoundCard = forwardRef<HTMLDivElement, Props>(function SoundCard(
-  { folder, item, variant, hotkeyLabel, className = '', style, ...rest },
+  { folder, item, variant, hotkeyLabel, fontSize, className = '', style, ...rest },
   ref
 ) {
   const { file, state, displayName } = item
@@ -166,7 +168,10 @@ const SoundCard = forwardRef<HTMLDivElement, Props>(function SoundCard(
         {state.hidden && <EyeOff size={12} className="opacity-70" />}
         {keyBadge}
       </div>
-      <span className="relative z-[1] line-clamp-3 break-words px-2 text-center text-sm font-semibold leading-tight">
+      <span
+        className="relative z-[1] line-clamp-3 break-words px-2 text-center text-sm font-semibold leading-tight"
+        style={fontSize ? { fontSize } : undefined}
+      >
         {displayName}
       </span>
       {inst && (

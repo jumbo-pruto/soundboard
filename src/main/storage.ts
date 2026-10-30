@@ -2,15 +2,16 @@ import { app } from 'electron'
 import { promises as fs } from 'fs'
 import { basename, extname, join } from 'path'
 import { readJson, writeJsonAtomic } from './jsonStore'
-import { AppConfig, Board, DEFAULT_CONFIG, ScannedFile } from '../shared/types'
+import { AppConfig, Board, DEFAULT_CONFIG, migrateConfig, ScannedFile } from '../shared/types'
 
 const configPath = (): string => join(app.getPath('userData'), 'config.json')
 const boardPath = (folder: string): string => join(folder, '.soundboard', 'board.json')
 
 export async function readConfig(): Promise<AppConfig> {
-  const saved = await readJson<Partial<AppConfig>>(configPath())
+  const raw = await readJson<Record<string, unknown>>(configPath())
+  const saved = migrateConfig(raw) as Partial<AppConfig>
   // merge over defaults so newly added settings always have a value
-  return { ...DEFAULT_CONFIG, ...(saved ?? {}), window: { ...DEFAULT_CONFIG.window, ...(saved?.window ?? {}) } }
+  return { ...DEFAULT_CONFIG, ...saved, window: { ...DEFAULT_CONFIG.window, ...(saved.window ?? {}) } }
 }
 
 export async function writeConfig(config: AppConfig): Promise<void> {

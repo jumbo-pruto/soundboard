@@ -126,11 +126,12 @@ export default function SettingsModal(): JSX.Element | null {
           <Field label="Clicking a playing sound again">
             <select
               className="field cursor-pointer"
-              value={config.retriggerRestarts ? 'restart' : 'stop'}
-              onChange={(e) => setConfig({ retriggerRestarts: e.target.value === 'restart' })}
+              value={config.retriggerMode}
+              onChange={(e) => setConfig({ retriggerMode: e.target.value as typeof config.retriggerMode })}
             >
               <option value="restart">Restarts it from the beginning</option>
               <option value="stop">Stops it</option>
+              <option value="stack">Plays another copy on top (stack)</option>
             </select>
           </Field>
         </div>

@@ -10,6 +10,7 @@ export function triggerItem(folder: string, item: Item): void {
     title: item.displayName,
     color: item.state.color,
     volume: item.state.volume,
-    rate: item.state.rate
+    rate: item.state.rate,
+    retrigger: item.state.retrigger
   })
 }

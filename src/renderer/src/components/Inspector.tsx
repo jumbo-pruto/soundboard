@@ -1,5 +1,19 @@
 import { useEffect, useState } from 'react'
-import { EyeOff, Heart, Keyboard, Play, RotateCcw, Trash2, X } from 'lucide-react'
+import {
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
+  AlignVerticalSpaceAround,
+  ArrowDownToLine,
+  ArrowUpToLine,
+  EyeOff,
+  Heart,
+  Keyboard,
+  Play,
+  RotateCcw,
+  Trash2,
+  X
+} from 'lucide-react'
 import { ButtonState, TextBoxState } from '@shared/types'
 import { triggerItem } from '../audio/actions'
 import { useBoardStore, TabData } from '../store/useBoardStore'
@@ -198,6 +212,44 @@ function ButtonInspector({ tab, fileKey }: { tab: TabData; fileKey: string }): J
         </label>
         <Slider value={state.rate} min={0.5} max={2} step={0.05} onChange={(rate) => patch({ rate })} className="w-full" />
       </div>
+
+      <div>
+        <label className="label">
+          Canvas text size
+          <span className="float-right normal-case">
+            {state.canvasFontSize == null ? 'Auto' : `${state.canvasFontSize}px`}
+            <button
+              className="ml-1 text-accent"
+              onClick={() => patch({ canvasFontSize: null })}
+              title="Auto (default)"
+            >
+              <RotateCcw size={10} className="inline" />
+            </button>
+          </span>
+        </label>
+        <Slider
+          value={state.canvasFontSize ?? 14}
+          min={10}
+          max={40}
+          step={1}
+          onChange={(canvasFontSize) => patch({ canvasFontSize })}
+          className="w-full"
+        />
+      </div>
+
+      <div>
+        <label className="label">Re-click behavior</label>
+        <select
+          className="field cursor-pointer"
+          value={state.retrigger}
+          onChange={(e) => patch({ retrigger: e.target.value as ButtonState['retrigger'] })}
+        >
+          <option value="default">Use global setting</option>
+          <option value="restart">Restart</option>
+          <option value="stop">Stop</option>
+          <option value="stack">Stack another copy</option>
+        </select>
+      </div>
     </div>
   )
 }
@@ -228,6 +280,43 @@ function TextInspector({ tab, id }: { tab: TabData; id: string }): JSX.Element |
           Font size <span className="float-right normal-case">{box.fontSize}px</span>
         </label>
         <Slider value={box.fontSize} min={10} max={72} step={1} onChange={(fontSize) => patch({ fontSize })} className="w-full" />
+      </div>
+      <div>
+        <label className="label">Alignment</label>
+        <div className="flex gap-2">
+          <div className="flex rounded-lg border border-line p-0.5">
+            {([
+              ['left', AlignLeft],
+              ['center', AlignCenter],
+              ['right', AlignRight]
+            ] as const).map(([val, Icon]) => (
+              <button
+                key={val}
+                title={`Align ${val}`}
+                onClick={() => patch({ align: val })}
+                className={`rounded-md p-1.5 transition ${box.align === val ? 'bg-accent text-bg' : 'text-muted hover:text-fg'}`}
+              >
+                <Icon size={15} />
+              </button>
+            ))}
+          </div>
+          <div className="flex rounded-lg border border-line p-0.5">
+            {([
+              ['top', ArrowUpToLine],
+              ['middle', AlignVerticalSpaceAround],
+              ['bottom', ArrowDownToLine]
+            ] as const).map(([val, Icon]) => (
+              <button
+                key={val}
+                title={`Vertical ${val}`}
+                onClick={() => patch({ valign: val })}
+                className={`rounded-md p-1.5 transition ${box.valign === val ? 'bg-accent text-bg' : 'text-muted hover:text-fg'}`}
+              >
+                <Icon size={15} />
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
       <div>
         <label className="label">Text color</label>

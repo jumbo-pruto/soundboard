@@ -1,4 +1,5 @@
 import { nanoid } from 'nanoid'
+import { RetriggerPref } from '@shared/types'
 import { soundUrl } from '../utils/path'
 import { PlayInstance, usePlayerStore } from '../store/usePlayerStore'
 import { useUIStore } from '../store/useUIStore'
@@ -125,6 +126,8 @@ export interface PlayOpts {
   color: string | null
   volume: number
   rate: number
+  /** per-button re-click behavior; 'default' follows the global setting */
+  retrigger: RetriggerPref
 }
 
 export function findInstance(folder: string, key: string): PlayInstance | undefined {
@@ -135,19 +138,19 @@ export function findInstance(folder: string, key: string): PlayInstance | undefi
 
 /** Trigger a sound. Honors the overlap + retrigger settings. */
 export function play(opts: PlayOpts): void {
-  const { allowOverlap, retriggerRestarts } = useUIStore.getState().config
+  const { allowOverlap, retriggerMode } = useUIStore.getState().config
+  const effective = opts.retrigger === 'default' ? retriggerMode : opts.retrigger
 
-  const existing = findInstance(opts.folder, opts.key)
-  if (existing) {
-    if (retriggerRestarts) {
-      restart(existing.id)
-    } else {
-      stop(existing.id)
+  // 'stack' skips the dedup entirely so copies pile up (great for short sounds)
+  if (effective !== 'stack') {
+    const existing = findInstance(opts.folder, opts.key)
+    if (existing) {
+      if (effective === 'restart') restart(existing.id)
+      else stop(existing.id)
+      return
     }
-    return
+    if (!allowOverlap) stopAll()
   }
-
-  if (!allowOverlap) stopAll()
 
   const id = nanoid(8)
   let el = pool.get(opts.path)
