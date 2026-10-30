@@ -1,10 +1,11 @@
 import { DragEvent, useEffect, useState } from 'react'
 import { FolderInput } from 'lucide-react'
 import { preload } from './audio/player'
+import ContextMenu from './components/ContextMenu'
 import Inspector from './components/Inspector'
+import PaneArea from './components/PaneArea'
 import SettingsModal from './components/SettingsModal'
 import TabBar from './components/TabBar'
-import TabContent from './components/TabContent'
 import Toolbar from './components/Toolbar'
 import TopBar from './components/TopBar'
 import TransportBar from './components/TransportBar'
@@ -20,11 +21,25 @@ function useBoot(): boolean {
   useEffect(() => {
     void (async () => {
       await useUIStore.getState().loadConfig()
-      const { openTabs, activeTab } = useUIStore.getState().config
-      await Promise.all(openTabs.map((f) => useBoardStore.getState().loadTab(f)))
-      if (!activeTab || !openTabs.includes(activeTab)) {
-        useUIStore.getState().setConfig({ activeTab: openTabs[0] ?? null })
+      const cfg = useUIStore.getState().config
+      await Promise.all(cfg.openTabs.map((f) => useBoardStore.getState().loadTab(f)))
+
+      // sanitize panes: drop pane folders that are no longer open; make sure one pane shows something
+      const inOpen = (f: string | null): boolean => !!f && cfg.openTabs.includes(f)
+      let panes = cfg.panes.map((p) => ({ ...p, folder: inOpen(p.folder) ? p.folder : null }))
+      if (panes.length === 0) panes = [{ folder: null, viewMode: cfg.viewMode }]
+      const focusedPane = Math.max(0, Math.min(cfg.focusedPane, panes.length - 1))
+      if (!panes.some((p) => p.folder) && cfg.openTabs.length) {
+        panes[focusedPane] = { ...panes[focusedPane], folder: cfg.openTabs[0] }
       }
+      const paneSizes = panes.map((_, i) => cfg.paneSizes[i] ?? 1)
+      useUIStore.getState().setConfig({
+        panes,
+        focusedPane,
+        paneSizes,
+        activeTab: panes[focusedPane]?.folder ?? null,
+        viewMode: panes[focusedPane]?.viewMode ?? cfg.viewMode
+      })
     })()
 
     const off = window.api.onFolderChanged((folder) => void useBoardStore.getState().rescan(folder))
@@ -64,13 +79,19 @@ function useAppearance(): void {
   }, [accent])
 }
 
-/** Pre-buffer the active tab's sounds so the first click is instant. */
+/** Pre-buffer the sounds of every visible pane's tab so the first click is instant. */
 function usePreload(): void {
-  const activeTab = useUIStore((s) => s.config.activeTab)
-  const files = useBoardStore((s) => (activeTab ? s.tabs[activeTab]?.files : undefined))
+  const panes = useUIStore((s) => s.config.panes)
+  const tabs = useBoardStore((s) => s.tabs)
+  const paths = panes
+    .map((p) => p.folder)
+    .filter((f): f is string => !!f)
+    .flatMap((f) => tabs[f]?.files.map((file) => file.file) ?? [])
+  const key = paths.join('|')
   useEffect(() => {
-    if (files) preload(files.map((f) => f.file))
-  }, [files])
+    if (paths.length) preload(paths)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key])
 }
 
 function useFolderDrop(): { dragging: boolean; handlers: Record<string, (e: DragEvent) => void> } {
@@ -130,12 +151,13 @@ export default function App(): JSX.Element {
       <Toolbar />
       <div className="flex min-h-0 flex-1">
         <main className="min-w-0 flex-1 bg-bg">
-          <TabContent />
+          <PaneArea />
         </main>
         {editMode && <Inspector />}
       </div>
       <TransportBar />
       <SettingsModal />
+      <ContextMenu />
 
       {dragging && (
         <div className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-accent/20 backdrop-blur-sm">

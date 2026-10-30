@@ -1,6 +1,6 @@
 import { ReactNode, useEffect } from 'react'
 import { Settings, X } from 'lucide-react'
-import { reloadAll } from '../store/tabActions'
+import { reloadAll, setPaneViewMode } from '../store/tabActions'
 import { useUIStore } from '../store/useUIStore'
 
 const ALL_EXTS = ['.mp3', '.wav', '.ogg', '.flac', '.m4a']
@@ -102,7 +102,7 @@ export default function SettingsModal(): JSX.Element | null {
             <select
               className="field cursor-pointer"
               value={config.viewMode}
-              onChange={(e) => setConfig({ viewMode: e.target.value as typeof config.viewMode })}
+              onChange={(e) => setPaneViewMode(config.focusedPane, e.target.value as typeof config.viewMode)}
             >
               <option value="list">List</option>
               <option value="grid">Grid</option>

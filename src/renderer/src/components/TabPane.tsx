@@ -1,39 +1,18 @@
-import { FolderOpen, FolderX, Loader2, RefreshCw, Trash2 } from 'lucide-react'
-import { addFolderFlow, closeTab } from '../store/tabActions'
+import { FolderX, Loader2, RefreshCw, Trash2 } from 'lucide-react'
+import { ViewMode } from '@shared/types'
+import { closeTab } from '../store/tabActions'
 import { useBoardStore } from '../store/useBoardStore'
-import { useUIStore } from '../store/useUIStore'
 import CanvasView from './views/CanvasView'
 import GridView from './views/GridView'
 import LaunchpadView from './views/LaunchpadView'
 import ListView from './views/ListView'
 
-function Welcome(): JSX.Element {
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
-      <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-accent/15 text-accent">
-        <FolderOpen size={40} />
-      </div>
-      <h1 className="text-2xl font-bold">Add your first sound folder</h1>
-      <p className="max-w-md text-sm text-muted">
-        Pick any folder with <b>.mp3</b> or <b>.wav</b> files. Each folder becomes a tab and every file
-        becomes a button. You can also drag a folder onto this window.
-      </p>
-      <button className="btn-accent !px-5 !py-2.5 !text-base" onClick={() => void addFolderFlow()} data-testid="welcome-add">
-        <FolderOpen size={18} /> Choose folder…
-      </button>
-    </div>
-  )
-}
-
-export default function TabContent(): JSX.Element {
-  const activeTab = useUIStore((s) => s.config.activeTab)
-  const viewMode = useUIStore((s) => s.config.viewMode)
-  const tab = useBoardStore((s) => (activeTab ? s.tabs[activeTab] : undefined))
+/** Renders one tab's content in a given view mode. Used by every pane. */
+export default function TabPane({ folder, viewMode }: { folder: string; viewMode: ViewMode }): JSX.Element {
+  const tab = useBoardStore((s) => s.tabs[folder])
   const loadTab = useBoardStore((s) => s.loadTab)
 
-  if (!activeTab || !tab) return <Welcome />
-
-  if (tab.status === 'loading') {
+  if (!tab || tab.status === 'loading') {
     return (
       <div className="flex h-full items-center justify-center gap-2 text-muted">
         <Loader2 size={18} className="animate-spin" /> Loading…

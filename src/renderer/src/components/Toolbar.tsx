@@ -15,7 +15,7 @@ import {
   X
 } from 'lucide-react'
 import { Board, ViewMode } from '@shared/types'
-import { reloadAll } from '../store/tabActions'
+import { reloadAll, setPaneViewMode } from '../store/tabActions'
 import { useBoardStore } from '../store/useBoardStore'
 import { useUIStore } from '../store/useUIStore'
 
@@ -99,6 +99,7 @@ export default function Toolbar(): JSX.Element {
   const viewMode = useUIStore((s) => s.config.viewMode)
   const editMode = useUIStore((s) => s.config.editMode)
   const activeTab = useUIStore((s) => s.config.activeTab)
+  const focusedPane = useUIStore((s) => s.config.focusedPane)
   const setConfig = useUIStore((s) => s.setConfig)
   const activeBoard = useBoardStore((s) =>
     activeTab && s.tabs[activeTab]?.status === 'ready' ? s.tabs[activeTab].board : undefined
@@ -197,7 +198,7 @@ export default function Toolbar(): JSX.Element {
           <button
             key={v.mode}
             data-testid={`view-${v.mode}`}
-            onClick={() => setConfig({ viewMode: v.mode })}
+            onClick={() => setPaneViewMode(focusedPane, v.mode)}
             className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${
               viewMode === v.mode ? 'bg-accent text-bg' : 'text-muted hover:text-fg'
             }`}
