@@ -40,6 +40,8 @@ interface UIState {
   contextMenu: ContextMenuState | null
   /** multi-selected canvas items (for group move + align) */
   canvasSel: { folder: string; keys: string[]; textIds: string[] }
+  /** in-app text prompt (Electron has no window.prompt) */
+  promptDialog: { title: string; value: string; placeholder?: string; onSubmit: (v: string) => void } | null
 
   loadConfig: () => Promise<void>
   setConfig: (patch: Partial<AppConfig>) => void
@@ -59,6 +61,8 @@ interface UIState {
   setCanvasSel: (folder: string, keys: string[], textIds: string[]) => void
   toggleCanvasItem: (folder: string, kind: 'button' | 'text', id: string) => void
   clearCanvasSel: () => void
+  openPrompt: (title: string, value: string, onSubmit: (v: string) => void, placeholder?: string) => void
+  closePrompt: () => void
 }
 
 export const MIN_ZOOM = 0.25
@@ -91,6 +95,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   tabMultiSelect: [],
   contextMenu: null,
   canvasSel: { folder: '', keys: [], textIds: [] },
+  promptDialog: null,
 
   loadConfig: async () => {
     const saved = await window.api.readConfig()
@@ -139,5 +144,7 @@ export const useUIStore = create<UIState>((set, get) => ({
       set({ canvasSel: { ...base, folder, textIds } })
     }
   },
-  clearCanvasSel: () => set({ canvasSel: { folder: '', keys: [], textIds: [] } })
+  clearCanvasSel: () => set({ canvasSel: { folder: '', keys: [], textIds: [] } }),
+  openPrompt: (title, value, onSubmit, placeholder) => set({ promptDialog: { title, value, placeholder, onSubmit } }),
+  closePrompt: () => set({ promptDialog: null })
 }))

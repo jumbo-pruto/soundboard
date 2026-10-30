@@ -55,10 +55,11 @@ function LayoutPicker({ folder, board, editMode }: { folder: string; board: Boar
             className="btn-ghost !p-1.5"
             title="New layout (snapshots current arrangement)"
             data-testid="layout-new"
-            onClick={() => {
-              const name = window.prompt('New layout name:', `Layout ${board.layouts.length + 1}`)
-              if (name && name.trim()) createLayout(folder, name.trim())
-            }}
+            onClick={() =>
+              useUIStore.getState().openPrompt('New layout name', `Layout ${board.layouts.length + 1}`, (name) => {
+                if (name.trim()) createLayout(folder, name.trim())
+              })
+            }
           >
             <Plus size={15} />
           </button>
@@ -67,19 +68,18 @@ function LayoutPicker({ folder, board, editMode }: { folder: string; board: Boar
             title="Rename current layout"
             onClick={() => {
               if (!active) return
-              const name = window.prompt('Rename layout:', active.name)
-              if (name && name.trim()) renameLayout(folder, active.id, name.trim())
+              useUIStore.getState().openPrompt('Rename layout', active.name, (name) => {
+                if (name.trim()) renameLayout(folder, active.id, name.trim())
+              })
             }}
           >
             <Pencil size={14} />
           </button>
           <button
             className="btn-ghost !p-1.5 disabled:opacity-30"
-            title="Delete current layout"
+            title="Delete current layout (undo with Ctrl+Z)"
             disabled={board.layouts.length <= 1}
-            onClick={() => {
-              if (active && window.confirm(`Delete layout "${active.name}"?`)) deleteLayout(folder, active.id)
-            }}
+            onClick={() => active && deleteLayout(folder, active.id)}
           >
             <Trash2 size={14} />
           </button>

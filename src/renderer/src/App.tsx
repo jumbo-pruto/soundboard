@@ -4,6 +4,7 @@ import { preload } from './audio/player'
 import ContextMenu from './components/ContextMenu'
 import Inspector from './components/Inspector'
 import PaneArea from './components/PaneArea'
+import PromptModal from './components/PromptModal'
 import SettingsModal from './components/SettingsModal'
 import TabBar from './components/TabBar'
 import Toolbar from './components/Toolbar'
@@ -160,6 +161,7 @@ export default function App(): JSX.Element {
       <TransportBar />
       <SettingsModal />
       <ContextMenu />
+      <PromptModal />
 
       {dragging && (
         <div className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-accent/20 backdrop-blur-sm">

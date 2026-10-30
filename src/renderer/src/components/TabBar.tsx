@@ -39,10 +39,10 @@ export default function TabBar(): JSX.Element {
       {
         label: 'Rename tab',
         icon: <Pencil size={14} />,
-        onClick: () => {
-          const n = window.prompt('Tab name:', name(folder))
-          if (n !== null) useBoardStore.getState().patchTab(folder, { name: n.trim() || null })
-        }
+        onClick: () =>
+          useUIStore.getState().openPrompt('Tab name', name(folder), (n) => {
+            useBoardStore.getState().patchTab(folder, { name: n.trim() || null })
+          })
       },
       { label: 'Reload', icon: <RotateCcw size={14} />, onClick: () => void reloadAll() },
       { separator: true },
