@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Rnd } from 'react-rnd'
 import { TextBoxState } from '@shared/types'
 import { useBoardStore, TabData } from '../../store/useBoardStore'
-import { useUIStore } from '../../store/useUIStore'
+import { clampZoom, useUIStore } from '../../store/useUIStore'
+import ZoomControls from '../canvas/ZoomControls'
 import EmptyHint from '../EmptyHint'
 import SoundCard from '../SoundCard'
 import { useItems } from './useItems'
@@ -13,12 +14,14 @@ function CanvasText({
   folder,
   box,
   editMode,
-  snap
+  snap,
+  scale
 }: {
   folder: string
   box: TextBoxState
   editMode: boolean
   snap: boolean
+  scale: number
 }): JSX.Element {
   const patch = useBoardStore((s) => s.patchTextBox)
   const selected = useUIStore(
@@ -36,6 +39,7 @@ function CanvasText({
       size={{ width: box.w, height: box.h }}
       position={{ x: box.x, y: box.y }}
       bounds="parent"
+      scale={scale}
       minWidth={60}
       minHeight={24}
       dragGrid={snap ? [GRID, GRID] : undefined}
@@ -89,6 +93,9 @@ export default function CanvasView({ tab }: { tab: TabData }): JSX.Element {
   const { items, editMode } = useItems(tab)
   const snap = useUIStore((s) => s.config.snapToGrid)
   const patchButton = useBoardStore((s) => s.patchButton)
+  const zoom = useUIStore((s) => s.canvasZoom[tab.folder] ?? 1)
+  const setZoom = useUIStore((s) => s.setZoom)
+  const scrollRef = useRef<HTMLDivElement>(null)
 
   // let the scrollable surface grow with the content so nothing is ever out of reach
   const extent = useMemo(() => {
@@ -105,40 +112,76 @@ export default function CanvasView({ tab }: { tab: TabData }): JSX.Element {
     return { w: w + 240, h: h + 240 }
   }, [items, tab.board.textBoxes])
 
+  // Ctrl/pinch wheel zoom toward the cursor (native non-passive listener so preventDefault works)
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent): void => {
+      if (!e.ctrlKey) return
+      e.preventDefault()
+      const cur = useUIStore.getState().canvasZoom[tab.folder] ?? 1
+      const next = clampZoom(cur * (e.deltaY < 0 ? 1.15 : 1 / 1.15))
+      if (next === cur) return
+      const rect = el.getBoundingClientRect()
+      const px = e.clientX - rect.left
+      const py = e.clientY - rect.top
+      const ratio = next / cur
+      useUIStore.getState().setZoom(tab.folder, next)
+      requestAnimationFrame(() => {
+        el.scrollLeft = (el.scrollLeft + px) * ratio - px
+        el.scrollTop = (el.scrollTop + py) * ratio - py
+      })
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [tab.folder])
+
+  const fit = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const z = clampZoom(Math.min(el.clientWidth / extent.w, el.clientHeight / extent.h, 1))
+    setZoom(tab.folder, z)
+    el.scrollTo({ left: 0, top: 0 })
+  }, [extent.w, extent.h, setZoom, tab.folder])
+
+  const deselect = (e: React.MouseEvent): void => {
+    if (editMode && e.target === e.currentTarget) useUIStore.getState().select(null)
+  }
+
   if (items.length === 0 && tab.board.textBoxes.length === 0) return <EmptyHint tab={tab} />
 
   return (
-    <div
-      className="h-full overflow-auto"
-      onClick={(e) => {
-        if (editMode && e.target === e.currentTarget) useUIStore.getState().select(null)
-      }}
-    >
-      <div
-        className={`relative ${editMode ? 'canvas-grid' : ''}`}
-        style={{ minWidth: '100%', minHeight: '100%', width: extent.w, height: extent.h }}
-        onClick={(e) => {
-          if (editMode && e.target === e.currentTarget) useUIStore.getState().select(null)
-        }}
-      >
-        {tab.board.textBoxes.map((box) => (
-          <CanvasText key={box.id} folder={tab.folder} box={box} editMode={editMode} snap={snap} />
-        ))}
+    <div className="relative h-full">
+      <div ref={scrollRef} className="h-full overflow-auto" onClick={deselect}>
+        <div
+          className="relative"
+          style={{ width: extent.w * zoom, height: extent.h * zoom, minWidth: '100%', minHeight: '100%' }}
+          onClick={deselect}
+        >
+          <div
+            className={`absolute left-0 top-0 ${editMode ? 'canvas-grid' : ''}`}
+            style={{ width: extent.w, height: extent.h, transform: `scale(${zoom})`, transformOrigin: 'top left' }}
+            onClick={deselect}
+          >
+            {tab.board.textBoxes.map((box) => (
+              <CanvasText key={box.id} folder={tab.folder} box={box} editMode={editMode} snap={snap} scale={zoom} />
+            ))}
 
-        {items.map((item) => {
-          const c = item.state.canvas
-          return (
-            <Rnd
-              key={item.file.key}
-              size={{ width: c.w, height: c.h }}
-              position={{ x: c.x, y: c.y }}
-              bounds="parent"
-              minWidth={80}
-              minHeight={44}
-              dragGrid={snap ? [GRID, GRID] : undefined}
-              resizeGrid={snap ? [GRID, GRID] : undefined}
-              disableDragging={!editMode}
-              enableResizing={editMode}
+            {items.map((item) => {
+              const c = item.state.canvas
+              return (
+                <Rnd
+                  key={item.file.key}
+                  size={{ width: c.w, height: c.h }}
+                  position={{ x: c.x, y: c.y }}
+                  bounds="parent"
+                  scale={zoom}
+                  minWidth={80}
+                  minHeight={44}
+                  dragGrid={snap ? [GRID, GRID] : undefined}
+                  resizeGrid={snap ? [GRID, GRID] : undefined}
+                  disableDragging={!editMode}
+                  enableResizing={editMode}
               onDragStart={() =>
                 useUIStore.getState().select({ kind: 'button', folder: tab.folder, key: item.file.key })
               }
@@ -160,9 +203,12 @@ export default function CanvasView({ tab }: { tab: TabData }): JSX.Element {
                 fontSize={item.state.canvasFontSize ?? undefined}
               />
             </Rnd>
-          )
-        })}
+              )
+            })}
+          </div>
+        </div>
       </div>
+      <ZoomControls folder={tab.folder} zoom={zoom} onFit={fit} />
     </div>
   )
 }

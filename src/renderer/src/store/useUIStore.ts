@@ -18,6 +18,8 @@ interface UIState {
   selection: Selection
   launchpadPage: number
   toast: string | null
+  /** per-folder canvas zoom (transient; 1 = 100%) */
+  canvasZoom: Record<string, number>
 
   loadConfig: () => Promise<void>
   setConfig: (patch: Partial<AppConfig>) => void
@@ -29,7 +31,12 @@ interface UIState {
   select: (s: Selection) => void
   setLaunchpadPage: (n: number) => void
   showToast: (msg: string) => void
+  setZoom: (folder: string, zoom: number) => void
 }
+
+export const MIN_ZOOM = 0.25
+export const MAX_ZOOM = 3
+export const clampZoom = (z: number): number => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z))
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined
 let toastTimer: ReturnType<typeof setTimeout> | undefined
@@ -53,6 +60,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   selection: null,
   launchpadPage: 0,
   toast: null,
+  canvasZoom: {},
 
   loadConfig: async () => {
     const saved = await window.api.readConfig()
@@ -77,5 +85,7 @@ export const useUIStore = create<UIState>((set, get) => ({
     set({ toast })
     clearTimeout(toastTimer)
     toastTimer = setTimeout(() => set({ toast: null }), 2800)
-  }
+  },
+
+  setZoom: (folder, zoom) => set({ canvasZoom: { ...get().canvasZoom, [folder]: clampZoom(zoom) } })
 }))

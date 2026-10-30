@@ -1,16 +1,20 @@
 import {
   Grid3x3,
   Heart,
+  Layers,
   LayoutGrid,
   List,
   Move,
+  Pencil,
+  Plus,
   RefreshCw,
   Search,
   StickyNote,
+  Trash2,
   Wand2,
   X
 } from 'lucide-react'
-import { ViewMode } from '@shared/types'
+import { Board, ViewMode } from '@shared/types'
 import { reloadAll } from '../store/tabActions'
 import { useBoardStore } from '../store/useBoardStore'
 import { useUIStore } from '../store/useUIStore'
@@ -21,6 +25,69 @@ const VIEWS: { mode: ViewMode; label: string; icon: JSX.Element }[] = [
   { mode: 'launchpad', label: 'Launchpad', icon: <Grid3x3 size={15} /> },
   { mode: 'canvas', label: 'Canvas', icon: <Move size={15} /> }
 ]
+
+/** Saved canvas-layout switcher (shown in Canvas view). Switching applies a layout; edit mode adds new/rename/delete. */
+function LayoutPicker({ folder, board, editMode }: { folder: string; board: Board; editMode: boolean }): JSX.Element {
+  const applyLayout = useBoardStore((s) => s.applyLayout)
+  const createLayout = useBoardStore((s) => s.createLayout)
+  const renameLayout = useBoardStore((s) => s.renameLayout)
+  const deleteLayout = useBoardStore((s) => s.deleteLayout)
+  const active = board.layouts.find((l) => l.id === board.activeLayoutId)
+
+  return (
+    <div className="flex items-center gap-1" title="Saved canvas layouts" data-testid="layout-picker">
+      <Layers size={15} className="text-muted" />
+      <select
+        className="field !w-auto max-w-[160px] cursor-pointer"
+        value={board.activeLayoutId ?? ''}
+        onChange={(e) => applyLayout(folder, e.target.value)}
+        aria-label="Canvas layout"
+      >
+        {board.layouts.map((l) => (
+          <option key={l.id} value={l.id}>
+            {l.name}
+          </option>
+        ))}
+      </select>
+      {editMode && (
+        <>
+          <button
+            className="btn-ghost !p-1.5"
+            title="New layout (snapshots current arrangement)"
+            data-testid="layout-new"
+            onClick={() => {
+              const name = window.prompt('New layout name:', `Layout ${board.layouts.length + 1}`)
+              if (name && name.trim()) createLayout(folder, name.trim())
+            }}
+          >
+            <Plus size={15} />
+          </button>
+          <button
+            className="btn-ghost !p-1.5"
+            title="Rename current layout"
+            onClick={() => {
+              if (!active) return
+              const name = window.prompt('Rename layout:', active.name)
+              if (name && name.trim()) renameLayout(folder, active.id, name.trim())
+            }}
+          >
+            <Pencil size={14} />
+          </button>
+          <button
+            className="btn-ghost !p-1.5 disabled:opacity-30"
+            title="Delete current layout"
+            disabled={board.layouts.length <= 1}
+            onClick={() => {
+              if (active && window.confirm(`Delete layout "${active.name}"?`)) deleteLayout(folder, active.id)
+            }}
+          >
+            <Trash2 size={14} />
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
 
 export default function Toolbar(): JSX.Element {
   const query = useUIStore((s) => s.query)
@@ -33,8 +100,12 @@ export default function Toolbar(): JSX.Element {
   const editMode = useUIStore((s) => s.config.editMode)
   const activeTab = useUIStore((s) => s.config.activeTab)
   const setConfig = useUIStore((s) => s.setConfig)
+  const activeBoard = useBoardStore((s) =>
+    activeTab && s.tabs[activeTab]?.status === 'ready' ? s.tabs[activeTab].board : undefined
+  )
 
-  const canvasTools = editMode && viewMode === 'canvas' && !!activeTab
+  const onCanvas = viewMode === 'canvas' && !!activeTab && !!activeBoard
+  const canvasTools = editMode && onCanvas
 
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-line bg-bg px-4 py-2">
@@ -88,6 +159,13 @@ export default function Toolbar(): JSX.Element {
       <button className="btn" onClick={() => void reloadAll()} title="Re-scan folders" data-testid="reload">
         <RefreshCw size={14} /> Reload
       </button>
+
+      {onCanvas && activeBoard && (
+        <>
+          <span className="mx-1 h-5 w-px bg-line" />
+          <LayoutPicker folder={activeTab!} board={activeBoard} editMode={editMode} />
+        </>
+      )}
 
       {canvasTools && (
         <>
