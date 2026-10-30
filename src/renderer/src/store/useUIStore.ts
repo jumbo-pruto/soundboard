@@ -38,6 +38,8 @@ interface UIState {
   /** tabs Ctrl-selected for a split action */
   tabMultiSelect: string[]
   contextMenu: ContextMenuState | null
+  /** multi-selected canvas items (for group move + align) */
+  canvasSel: { folder: string; keys: string[]; textIds: string[] }
 
   loadConfig: () => Promise<void>
   setConfig: (patch: Partial<AppConfig>) => void
@@ -54,6 +56,9 @@ interface UIState {
   clearTabSelect: () => void
   openContextMenu: (x: number, y: number, items: MenuItem[]) => void
   closeContextMenu: () => void
+  setCanvasSel: (folder: string, keys: string[], textIds: string[]) => void
+  toggleCanvasItem: (folder: string, kind: 'button' | 'text', id: string) => void
+  clearCanvasSel: () => void
 }
 
 export const MIN_ZOOM = 0.25
@@ -85,6 +90,7 @@ export const useUIStore = create<UIState>((set, get) => ({
   canvasZoom: {},
   tabMultiSelect: [],
   contextMenu: null,
+  canvasSel: { folder: '', keys: [], textIds: [] },
 
   loadConfig: async () => {
     const saved = await window.api.readConfig()
@@ -119,5 +125,19 @@ export const useUIStore = create<UIState>((set, get) => ({
   },
   clearTabSelect: () => set({ tabMultiSelect: [] }),
   openContextMenu: (x, y, items) => set({ contextMenu: { x, y, items } }),
-  closeContextMenu: () => set({ contextMenu: null })
+  closeContextMenu: () => set({ contextMenu: null }),
+
+  setCanvasSel: (folder, keys, textIds) => set({ canvasSel: { folder, keys, textIds } }),
+  toggleCanvasItem: (folder, kind, id) => {
+    const cur = get().canvasSel
+    const base = cur.folder === folder ? cur : { folder, keys: [], textIds: [] }
+    if (kind === 'button') {
+      const keys = base.keys.includes(id) ? base.keys.filter((k) => k !== id) : [...base.keys, id]
+      set({ canvasSel: { ...base, folder, keys } })
+    } else {
+      const textIds = base.textIds.includes(id) ? base.textIds.filter((k) => k !== id) : [...base.textIds, id]
+      set({ canvasSel: { ...base, folder, textIds } })
+    }
+  },
+  clearCanvasSel: () => set({ canvasSel: { folder: '', keys: [], textIds: [] } })
 }))

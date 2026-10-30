@@ -17,11 +17,15 @@ interface Props extends Omit<HTMLAttributes<HTMLDivElement>, 'onClick'> {
   hotkeyLabel?: string | null
   /** overrides the label font size (canvas view uses the per-button canvasFontSize) */
   fontSize?: number
+  /** canvas edit-mode selection: called instead of single-select so the view can manage multi-select */
+  onEditSelect?: (additive: boolean) => void
+  /** highlight as part of a multi-selection */
+  multiSelected?: boolean
 }
 
 /** The single button used by Grid / List / Launchpad / Canvas views. */
 const SoundCard = forwardRef<HTMLDivElement, Props>(function SoundCard(
-  { folder, item, variant, hotkeyLabel, fontSize, className = '', style, ...rest },
+  { folder, item, variant, hotkeyLabel, fontSize, onEditSelect, multiSelected, className = '', style, ...rest },
   ref
 ) {
   const { file, state, displayName } = item
@@ -38,12 +42,37 @@ const SoundCard = forwardRef<HTMLDivElement, Props>(function SoundCard(
   const pct = inst && inst.duration > 0 ? Math.min(100, (inst.currentTime / inst.duration) * 100) : 0
   const textColor = readableOn(state.color)
 
-  const onClick = (): void => {
+  const onClick = (e: MouseEvent): void => {
     if (editMode) {
-      useUIStore.getState().select({ kind: 'button', folder, key: file.key })
+      if (onEditSelect) onEditSelect(e.shiftKey)
+      else useUIStore.getState().select({ kind: 'button', folder, key: file.key })
     } else {
       triggerItem(folder, item)
     }
+  }
+
+  const onContextMenu = (e: MouseEvent): void => {
+    e.preventDefault()
+    e.stopPropagation()
+    useUIStore.getState().openContextMenu(e.clientX, e.clientY, [
+      { label: 'Play', onClick: () => triggerItem(folder, item) },
+      {
+        label: state.favorite ? 'Remove favorite' : 'Add to favorites',
+        onClick: () => useBoardStore.getState().patchButton(folder, file.key, { favorite: !state.favorite })
+      },
+      {
+        label: state.hidden ? 'Unhide' : 'Hide (remove from board)',
+        onClick: () => useBoardStore.getState().patchButton(folder, file.key, { hidden: !state.hidden })
+      },
+      { separator: true },
+      {
+        label: 'Edit…',
+        onClick: () => {
+          if (!useUIStore.getState().config.editMode) useUIStore.getState().setConfig({ editMode: true })
+          useUIStore.getState().select({ kind: 'button', folder, key: file.key })
+        }
+      }
+    ])
   }
   const onStop = (e: MouseEvent): void => {
     e.stopPropagation()
@@ -64,6 +93,7 @@ const SoundCard = forwardRef<HTMLDivElement, Props>(function SoundCard(
     state.color ? 'border-transparent' : 'border-line bg-elevated text-fg hover:border-accent/70',
     playing ? 'animate-pulseGlow ring-2 ring-accent' : 'hover:brightness-110 active:scale-[0.985]',
     selected && editMode ? 'outline outline-2 outline-offset-2 outline-fg' : '',
+    multiSelected && editMode ? 'outline outline-2 outline-offset-2 outline-accent' : '',
     state.hidden ? 'opacity-40' : '',
     variant === 'card' ? 'rounded-xl' : 'rounded-lg',
     className
@@ -107,6 +137,7 @@ const SoundCard = forwardRef<HTMLDivElement, Props>(function SoundCard(
         className={`${base} flex h-11 items-center gap-2.5 px-3`}
         style={colorStyle}
         onClick={onClick}
+        onContextMenu={onContextMenu}
         {...rest}
       >
         {playing && (
@@ -155,6 +186,7 @@ const SoundCard = forwardRef<HTMLDivElement, Props>(function SoundCard(
       className={`${base} flex h-full min-h-[56px] w-full items-center justify-center px-3 py-2`}
       style={colorStyle}
       onClick={onClick}
+      onContextMenu={onContextMenu}
       {...rest}
     >
       {playing && (

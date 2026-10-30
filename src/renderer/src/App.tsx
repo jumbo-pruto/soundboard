@@ -9,6 +9,7 @@ import TabBar from './components/TabBar'
 import Toolbar from './components/Toolbar'
 import TopBar from './components/TopBar'
 import TransportBar from './components/TransportBar'
+import { useCanvasKeys } from './hooks/useCanvasKeys'
 import { useHotkeys } from './hooks/useHotkeys'
 import { openFolder } from './store/tabActions'
 import { useBoardStore } from './store/useBoardStore'
@@ -130,6 +131,7 @@ export default function App(): JSX.Element {
   useAppearance()
   usePreload()
   useHotkeys()
+  useCanvasKeys()
   const editMode = useUIStore((s) => s.config.editMode)
   const toast = useUIStore((s) => s.toast)
   const { dragging, handlers } = useFolderDrop()

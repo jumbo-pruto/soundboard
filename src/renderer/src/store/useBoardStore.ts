@@ -11,6 +11,7 @@ import {
   ScannedFile,
   TextBoxState
 } from '@shared/types'
+import { AlignRect, CanvasOp, computeAlign } from '../utils/align'
 import { useUIStore } from './useUIStore'
 
 export type TabStatus = 'loading' | 'ready' | 'missing' | 'error'
@@ -175,7 +176,42 @@ interface BoardState {
   renameLayout: (folder: string, id: string, name: string) => void
   deleteLayout: (folder: string, id: string) => void
 
+  // canvas multi-item ops
+  nudgeCanvas: (folder: string, keys: string[], textIds: string[], dx: number, dy: number) => void
+  applyCanvasOp: (folder: string, keys: string[], textIds: string[], op: CanvasOp) => void
+
+  // undo / redo (per folder; not persisted)
+  undo: (folder: string) => void
+  redo: (folder: string) => void
+
   flushAll: () => Promise<void>
+}
+
+// ---------- undo/redo history (module-level so it doesn't trigger re-renders) ----------
+const history = new Map<string, { past: Board[]; future: Board[] }>()
+const lastCoalesce = new Map<string, { key: string; t: number }>()
+const HISTORY_LIMIT = 60
+
+function pushHistory(folder: string, board: Board, coalesceKey?: string): void {
+  const now = Date.now()
+  if (coalesceKey) {
+    const prev = lastCoalesce.get(folder)
+    lastCoalesce.set(folder, { key: coalesceKey, t: now })
+    // repeated edits of the same control within 700ms collapse into one undo step
+    if (prev && prev.key === coalesceKey && now - prev.t < 700) return
+  } else {
+    lastCoalesce.delete(folder)
+  }
+  const h = history.get(folder) ?? { past: [], future: [] }
+  h.past.push(board)
+  if (h.past.length > HISTORY_LIMIT) h.past.shift()
+  h.future = []
+  history.set(folder, h)
+}
+
+export function clearHistory(folder: string): void {
+  history.delete(folder)
+  lastCoalesce.delete(folder)
 }
 
 const saveTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -204,12 +240,27 @@ export const useBoardStore = create<BoardState>((set, get) => {
     )
   }
 
-  const updateBoard = (folder: string, fn: (b: Board) => Board, sync = false): void => {
+  const updateBoard = (
+    folder: string,
+    fn: (b: Board) => Board,
+    sync = false,
+    coalesceKey?: string
+  ): void => {
     const tab = get().tabs[folder]
-    if (!tab) return
+    if (!tab || tab.status !== 'ready') return
+    // snapshot the pre-edit board for undo (rapid same-control edits coalesce)
+    pushHistory(folder, tab.board, coalesceKey)
     let board = fn(tab.board)
     // mirror live canvas edits into the currently selected layout
     if (sync) board = syncActiveLayout(board)
+    set({ tabs: { ...get().tabs, [folder]: { ...tab, board } } })
+    scheduleSave(folder)
+  }
+
+  /** Replace the board without recording history (used by undo/redo themselves). */
+  const setBoard = (folder: string, board: Board): void => {
+    const tab = get().tabs[folder]
+    if (!tab) return
     set({ tabs: { ...get().tabs, [folder]: { ...tab, board } } })
     scheduleSave(folder)
   }
@@ -281,6 +332,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
         void writeNow(folder)
       }
       void window.api.unwatchFolder(folder)
+      clearHistory(folder)
       const tabs = { ...get().tabs }
       delete tabs[folder]
       set({ tabs })
@@ -291,7 +343,8 @@ export const useBoardStore = create<BoardState>((set, get) => {
         folder,
         (b) =>
           b.buttons[key] ? { ...b, buttons: { ...b.buttons, [key]: { ...b.buttons[key], ...patch } } } : b,
-        'canvas' in patch || 'canvasFontSize' in patch
+        'canvas' in patch || 'canvasFontSize' in patch,
+        `${key}:${Object.keys(patch).sort().join(',')}`
       ),
 
     patchButtons: (folder, keys, patch) =>
@@ -361,7 +414,8 @@ export const useBoardStore = create<BoardState>((set, get) => {
       updateBoard(
         folder,
         (b) => ({ ...b, textBoxes: b.textBoxes.map((t) => (t.id === id ? { ...t, ...patch } : t)) }),
-        true
+        true,
+        `${id}:${Object.keys(patch).sort().join(',')}`
       ),
 
     removeTextBox: (folder, id) =>
@@ -396,6 +450,79 @@ export const useBoardStore = create<BoardState>((set, get) => {
         if (b.activeLayoutId !== id) return { ...b, layouts: remaining }
         return applyLayoutToLive({ ...b, layouts: remaining }, remaining[0])
       }),
+
+    nudgeCanvas: (folder, keys, textIds, dx, dy) => {
+      if (keys.length === 0 && textIds.length === 0) return
+      const keySet = new Set(keys)
+      const idSet = new Set(textIds)
+      updateBoard(
+        folder,
+        (b) => {
+          const buttons = { ...b.buttons }
+          for (const key of keySet) {
+            const bs = buttons[key]
+            if (bs) buttons[key] = { ...bs, canvas: { ...bs.canvas, x: Math.max(0, bs.canvas.x + dx), y: Math.max(0, bs.canvas.y + dy) } }
+          }
+          const textBoxes = b.textBoxes.map((t) =>
+            idSet.has(t.id) ? { ...t, x: Math.max(0, t.x + dx), y: Math.max(0, t.y + dy) } : t
+          )
+          return { ...b, buttons, textBoxes }
+        },
+        true,
+        `nudge:${[...keySet, ...idSet].join(',')}`
+      )
+    },
+
+    applyCanvasOp: (folder, keys, textIds, op) => {
+      const tab = get().tabs[folder]
+      if (!tab) return
+      const rects: AlignRect[] = []
+      for (const key of keys) {
+        const c = tab.board.buttons[key]?.canvas
+        if (c) rects.push({ id: `b:${key}`, x: c.x, y: c.y, w: c.w, h: c.h })
+      }
+      for (const t of tab.board.textBoxes) {
+        if (textIds.includes(t.id)) rects.push({ id: `t:${t.id}`, x: t.x, y: t.y, w: t.w, h: t.h })
+      }
+      const moves = computeAlign(rects, op)
+      if (moves.size === 0) return
+      updateBoard(
+        folder,
+        (b) => {
+          const buttons = { ...b.buttons }
+          const textBoxes = b.textBoxes.map((t) => {
+            const m = moves.get(`t:${t.id}`)
+            return m ? { ...t, x: m.x, y: m.y } : t
+          })
+          for (const key of keys) {
+            const m = moves.get(`b:${key}`)
+            if (m && buttons[key]) buttons[key] = { ...buttons[key], canvas: { ...buttons[key].canvas, x: m.x, y: m.y } }
+          }
+          return { ...b, buttons, textBoxes }
+        },
+        true
+      )
+    },
+
+    undo: (folder) => {
+      const h = history.get(folder)
+      const tab = get().tabs[folder]
+      if (!h || h.past.length === 0 || !tab || tab.status !== 'ready') return
+      const prev = h.past.pop() as Board
+      h.future.push(tab.board)
+      lastCoalesce.delete(folder)
+      setBoard(folder, prev)
+    },
+
+    redo: (folder) => {
+      const h = history.get(folder)
+      const tab = get().tabs[folder]
+      if (!h || h.future.length === 0 || !tab || tab.status !== 'ready') return
+      const next = h.future.pop() as Board
+      h.past.push(tab.board)
+      lastCoalesce.delete(folder)
+      setBoard(folder, next)
+    },
 
     flushAll: async () => {
       const pending = [...saveTimers.keys()]
