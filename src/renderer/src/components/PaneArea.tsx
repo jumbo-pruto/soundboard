@@ -148,12 +148,10 @@ function Divider({ index }: { index: number }): JSX.Element {
   }
   return (
     <div
-      className="group relative w-px shrink-0 cursor-col-resize bg-line hover:bg-accent"
+      className="relative w-1.5 shrink-0 cursor-col-resize bg-line transition-colors hover:bg-accent"
       onMouseDown={onDown}
       data-testid="pane-divider"
-    >
-      <div className="absolute inset-y-0 -left-1.5 -right-1.5" />
-    </div>
+    />
   )
 }
 

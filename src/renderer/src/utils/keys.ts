@@ -33,9 +33,14 @@ export function codeToLabel(code: string): string | null {
   return null
 }
 
+const NON_TEXT_INPUT = new Set(['range', 'checkbox', 'radio', 'button', 'submit', 'reset', 'color', 'file'])
+
 export function isTypingTarget(t: EventTarget | null): boolean {
   const el = t as HTMLElement | null
   if (!el || !el.tagName) return false
   const tag = el.tagName
-  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable
+  if (tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable) return true
+  // a focused slider/checkbox isn't "typing" — Ctrl+Z / arrow-nudge should still work
+  if (tag === 'INPUT') return !NON_TEXT_INPUT.has(((el as HTMLInputElement).type || 'text').toLowerCase())
+  return false
 }

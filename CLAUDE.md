@@ -52,9 +52,9 @@ Electron app, three TypeScript surfaces bundled by **electron-vite**:
 
 ## Status & roadmap
 
-- **v1: shipped** (everything above).
-- **v2: in progress** — canvas zoom; text-box text alignment; tab reorder + up to 3 independent split panes; saved canvas layout presets; per-button canvas font size; compounding (stack) playback; plus multi-select+align, undo/redo, right-click menus, arrow-key nudge. See the plan file referenced by the user for the detailed design; update this section as pieces land.
-- **Deferred (do not build unless reopened):** microphone / voice-chat injection (virtual-audio-cable routing), global OS-wide hotkeys, the Soundux online downloader. The user has VB-Audio Virtual Cable, so v1 can already feed Discord/OBS by selecting the cable's input as the output device.
+- **v1: shipped.**
+- **v2: shipped** — canvas zoom (`canvas/ZoomControls`, react-rnd `scale`); text-box text alignment (H/V); tab drag-reorder + up to 3 independent split panes (`PaneArea`/`TabPane`, `config.panes`/`focusedPane`/`paneSizes`); saved canvas layout presets (`board.layouts`/`activeLayoutId`, auto-synced on edit); per-button canvas font size; compounding (stack) playback (`config.retriggerMode` + per-button `retrigger`); multi-select + align/distribute (`canvas/AlignToolbar`, `utils/align.ts`, `useUIStore.canvasSel`); undo/redo (per-folder history in `useBoardStore`, Ctrl+Z/Y via `hooks/useCanvasKeys`); right-click menus (`ContextMenu`); arrow-key nudge. In-app `PromptModal` replaces `window.prompt` (unsupported in Electron).
+- **Deferred (do not build unless reopened):** microphone / voice-chat injection (virtual-audio-cable routing), global OS-wide hotkeys, the Soundux online downloader. The user has VB-Audio Virtual Cable, so output-device selection already feeds Discord/OBS by picking the cable's input as the output device.
 
 ## Gotchas
 
